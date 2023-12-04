@@ -1,76 +1,10 @@
-import { useEffect, useState } from 'react'
-import './Display.css'
-import { Node } from '../../tree'
+import { FC, useEffect, useState } from 'react'
+import './PathDisplay.css'
+import { Node, Path } from '../../tree'
 
 // utils
 
 const select = document.querySelector.bind(document)
-
-// class MySet<T> extends Set<T> {
-// 	eq(otherSet: Set<T>): boolean {
-// 		return this.size === otherSet.size &&
-// 			[...this].every(item => otherSet.has(item))
-// 	}
-// }
-
-function getRandom(items: any[]) {
-	const i = Math.floor(Math.random() * items.length)
-	return items[i]
-}
-
-
-
-
-
-// class Edge {
-// 	private static nextId = 0
-
-// 	readonly id: number
-// 	readonly a: Node
-// 	readonly b: Node
-// 	readonly cost: number
-
-// 	constructor(a: Node, b: Node, c: number = 1) {
-// 		this.id = Edge.nextId++
-// 		this.a = a
-// 		this.b = b
-// 		this.cost = c
-// 	}
-// }
-
-// class Node {
-// 	private static nextId = 0
-
-// 	readonly id: number
-//     readonly edges: Edge[]
-//     readonly priceByItem: {[item: string]: number}
-
-//     constructor() {
-// 		this.id = Node.nextId++
-// 		this.edges = []
-// 		this.priceByItem = {}
-//     }
-
-//     ensureEdgeTo(node: Node): void {
-// 		const edgeAlreadyExists = this.edges.some(edge => {
-// 			const newEdgeNodeSet = new MySet([this, node])
-// 			const oldEdgeNodeSet = new MySet([edge.a, edge.b])
-// 			return newEdgeNodeSet.eq(oldEdgeNodeSet)
-// 		})
-// 		if (edgeAlreadyExists) return
-
-// 		const edge = new Edge(this, node)
-//         this.edges.push(edge)
-//         node.edges.push(edge)
-//     }
-
-// 	setItemPrice(item: string, price: number): void {
-// 		this.priceByItem[item] = price
-// 	}
-// }
-
-
-
 
 const itemColorOpacity = 0.6
 const colorByItem: {
@@ -84,38 +18,12 @@ const colorByItem: {
 
 // create nodes and edges
 
-const nodes: Node[] = []
-const basePriceByItem: {
-	[item: string]: number
-} = {
-	copper: 2**3,
-	silver: 2**4,
-	gold: 2**5,
-	diamond: 2**6,
-}
 
-for (let i = 0; i < 6; i++) {
-	nodes.push(new Node())
-}
 
-let prevNode: Node|null = null
-for (let node of nodes) {
-	if (prevNode) prevNode.ensureEdgeTo(node)
-	prevNode = node
 
-	const randomNode = getRandom(nodes)
-	if (node != randomNode) {
-		node.ensureEdgeTo(randomNode)
-	}
 
-	for (let i = 0; i < 2; i++) {
-		const randomItem = getRandom(Object.keys(basePriceByItem))
-		const basePrice = basePriceByItem[randomItem]
-		const randomizedPriceFactor = 1 + 0.25 * Math.random()
-		const price = Math.floor(basePrice * randomizedPriceFactor)
-		node.setItemPrice(randomItem, price)
-	}
-}
+
+
 
 
 
@@ -128,10 +36,16 @@ type PointByNodeId = {
 	[id: number]: Point,
 }
 
-function Display() {
-	const [pointByNodeId, setPointByNodeId] = useState({} as PointByNodeId)
+interface PathDisplayProps {
+	nodes: Node[]
+	path: Path
+}
 
-	const radius = 200
+const RADIUS = 275
+const PathDisplay: FC<PathDisplayProps> = props => {
+	const { nodes, path } = props
+
+	const [pointByNodeId, setPointByNodeId] = useState({} as PointByNodeId)
 
 	useEffect(() => {
 		const canvas = select('#canvas') as HTMLCanvasElement
@@ -175,9 +89,10 @@ function Display() {
 		for (let i = 0; i < nodes.length; i++) {
 			const node = nodes[i]
 
-			const angle = i * angleIncrement
-			const x = centerX + radius * Math.cos(angle)
-			const y = centerY + radius * Math.sin(angle)
+			const r = RADIUS*0.3 + RADIUS*0.7 * (i/nodes.length)
+			const angle = i * angleIncrement * 3
+			const x = centerX + r * Math.cos(angle)
+			const y = centerY + r * Math.sin(angle)
 			newPointByNodeId[node.id] = {x, y}
 		}
 
@@ -216,7 +131,7 @@ function Display() {
 				const price = node.priceByItem[item]
 				const savings = maxPriceByItem[item] - price
 				const r = price
-					? 10 + 10 * Math.sqrt(0 + (savings * items.length) / Math.PI)
+					? 3 + 3 * Math.sqrt(0 + (savings * items.length) / Math.PI)
 					: 0
 				if (!r) {
 					console.log({
@@ -226,7 +141,7 @@ function Display() {
 					})
 				}
 
-				const padding = 5
+				const padding = 1
 				const beginAngle = i * radsPerItem
 				const endAngle = (i+1) * radsPerItem
 				const medianAngle = (endAngle + beginAngle) / 2
@@ -244,29 +159,7 @@ function Display() {
 		}
 
 		setPointByNodeId(newPointByNodeId)
-	}, [])
-
-	type Path = {
-		cost: number, // sum of travel + items for each step
-		steps: {
-			nodeId: number,
-			items: string[],
-		}[]
-	}
-
-	const displayPath: Path = {
-		cost: 0,
-		steps: [{
-			nodeId: 1,
-			items: []
-		}, {
-			nodeId: 2,
-			items: []
-		}, {
-			nodeId: 5,
-			items: []
-		}]
-	}
+	}, [nodes.length])
 
 	useEffect(() => {
 		if (!Object.keys(pointByNodeId).length) return
@@ -281,7 +174,7 @@ function Display() {
 		ctx.lineWidth = 3
 		ctx.strokeStyle = 'blue'
 		let pPrev: Point|null = null
-		for (let step of displayPath.steps) {
+		for (let step of path.steps) {
 			const p = pointByNodeId[step.nodeId]
 
 			// draw
@@ -293,13 +186,13 @@ function Display() {
 		ctx.stroke()
 		ctx.closePath()
 
-	}, [pointByNodeId, displayPath])
+	}, [pointByNodeId, path])
 
 	const canvasStyle = {
 		border: "1px solid #d3d3d3"
 	}
 	return (
-		<div className="Display">
+		<div className="PathDisplay">
 			<header className="Display-header">
 				<canvas
 					id="canvas"
@@ -321,4 +214,4 @@ function Display() {
 	)
 }
 
-export default Display
+export default PathDisplay

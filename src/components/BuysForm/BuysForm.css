@@ -1,0 +1,13 @@
+.BuysForm {
+	height: 100%;
+	width: 12000px;
+	background-color: teal;
+	padding: 5px;
+}
+
+#buysTextarea {
+	border: 2px solid grey;
+	border-radius: 4px;
+	height: 90%;
+	width: 100%;
+}

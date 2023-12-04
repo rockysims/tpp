@@ -1,84 +1,80 @@
-import React, { FC, useEffect, useState } from 'react';
+import { FC, useEffect, useState } from 'react';
 import './Home.css';
 
 import util from '../../util'
+import BuysForm from '../BuysForm/BuysForm';
+import { Node, Path } from '../../tree';
+import PathDisplay from '../PathDisplay/PathDisplay';
 
 interface HomeProps {}
 
-const EXAMPLE_INPUT = `High power
-4x Modal Electron Particle Accelerator I
-Medium power
-1x 50MN Quad LiF Restrained Microwarpdrive
-1x Warp Scrambler II
-1x X5 Enduring Stasis Webifier
-1x Medium F-RX Compact Capacitor Booster
-Low power
-1x Damage Control II
-1x Medium I-a Enduring Armor Repairer
-1x Compact Multispectrum Energized Membrane
-1x 400mm Crystalline Carbonide Restrained Plates
-1x Medium Ancillary Armor Repairer
-Rig Slot
-1x Medium Nanobot Accelerator I
-1x Medium Auxiliary Nano Pump I
-1x Medium Ancillary Current Router I
-Charges
-4,000x Caldari Navy Antimatter Charge M
-120x Nanite Repair Paste
-10x Navy Cap Booster 800
-Drones
-6x Hobgoblin II
-2x 'Integrated' Ogre
-5x Acolyte II
-2x 'Integrated' Hammerhead`
-
+let didInit_hacky = false
 const Home: FC<HomeProps> = () => {
-	const [lines, setLines] = useState([] as string[])
-	const [typeIdByName, setTypeIdByName] = useState({} as {
-		[name: string]: number
-	})
-
-	const onChangeBuysTextarea = (e: any) => {
-		const str = e.target.value
-		const lines: string[] = str.split('\n')
-		setLines(lines)
-	}
+	const [nodes, setNodes] = useState([] as Node[])
 
 	useEffect(() => {
+		if (didInit_hacky) return
+		didInit_hacky = true;
+
 		(async () => {
-			const typeIdByName = await util.getTypeIdByNameMap()
-			setTypeIdByName(typeIdByName)
+			const nodeBySystemId = await util.getNodeBySystemIdMap()
+			const nodes = Object.values(nodeBySystemId)
+
+			// ---
+
+			const basePriceByItem: {
+				[item: string]: number
+			} = {
+				copper: 2**3,
+				silver: 2**4,
+				gold: 2**5,
+				diamond: 2**6,
+			}
+			for (let node of nodes) {
+				for (let i = 0; i < 2; i++) {
+					const randomItem = getRandom(Object.keys(basePriceByItem))
+					const basePrice = basePriceByItem[randomItem]
+					const randomizedPriceFactor = 1 + 0.25 * Math.random()
+					const price = Math.floor(basePrice * randomizedPriceFactor)
+					node.setItemPrice(randomItem, price)
+				}
+			}
+			function getRandom(items: any[]) {
+				const i = Math.floor(Math.random() * items.length)
+				return items[i]
+			}
+
+			// ---
+
+			setNodes(nodes)
 		})()
 	}, [])
 
-	useEffect(() => {
-		const buys = lines
-			.map(line => {
-				const matches = line.match(/([\d,]+)x (.+)/)
-				if (!matches) return null
+	// TODO: update this to be a valid path
+	const path: Path = {
+		cost: 0,
+		steps: [{
+			nodeId: 1,
+			items: []
+		}, {
+			nodeId: 2,
+			items: []
+		}, {
+			nodeId: 5,
+			items: []
+		}]
+	}
 
-				const qty = +matches[1].replace(',', '')
-				const name = matches[2]
-				const typeId = typeIdByName[name]
-				return {
-					qty,
-					name,
-					typeId
-				}
-			})
-			.filter(buy => !!buy)
-		console.log({
-			buys
-		})
-	}, [lines, typeIdByName])
-
+	
 	return (
 		<div className="Home">
-			<textarea
-				id="buysTextarea"
-				onChange={onChangeBuysTextarea}
-				value={EXAMPLE_INPUT}
-			></textarea>
+			<BuysForm
+				onChange={buys => console.log('onChange buys:', {buys})}
+			></BuysForm>
+			<PathDisplay
+				nodes={nodes}
+				path={path}
+			></PathDisplay>
 		</div>
 	)
 }

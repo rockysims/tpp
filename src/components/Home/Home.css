@@ -1,11 +1,5 @@
 .Home {
+	display: flex;
 	height: 100%;
-	background-color: teal;
-}
-
-#buysTextarea {
-	border: 2px solid grey;
-	border-radius: 4px;
-	height: 90%;
-	width: 33%
+	background-color: black;
 }

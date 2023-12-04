@@ -1,3 +1,5 @@
+import { Node, Edge } from "./tree";
+
 const urlPrefix = 'http://localhost:3001'
 
 const JITA_REGION_ID = 10000002; //The Forge
@@ -73,11 +75,65 @@ const util = (() => {
 	
 	//---
 	
+	const getRegionIds = async (): Promise<number[]> => {
+		const url = `https://esi.evetech.net/latest/universe/regions/?datasource=tranquility`
+		const promise = getOrFetch(url, 7*24)
+		return promise.then(result => {
+			console.log('getRegionIds', {result})
+			return result
+		})
+	}
+	
+	const getConstellationIdsInRegion = async (regionId: number): Promise<number[]> => {
+		const url = `https://esi.evetech.net/latest/universe/regions/${regionId}/?datasource=tranquility`
+		const promise = getOrFetch(url, 7*24)
+		return promise.then(result => {
+			// console.log('getConstellationIdsInRegion', {result})
+			return result.constellations
+		})
+	}
+	
+	const getSystemIdsInConstellation = async (constellationId: number): Promise<number[]> => {
+		const url = `https://esi.evetech.net/latest/universe/constellations/${constellationId}/?datasource=tranquility`
+		const promise = getOrFetch(url, 7*24)
+		return promise.then(result => {
+			// console.log('getSystemIdsInConstellation', {result})
+			return result.systems
+		})
+	}
+	
+	const getStargateIdsInSystem = async (systemId: number): Promise<number[]> => {
+		const url = `https://esi.evetech.net/latest/universe/systems/${systemId}/?datasource=tranquility`
+		const promise = getOrFetch(url, 7*24)
+		return promise.then(result => {
+			// console.log('getStargateIdsInSystem', {result})
+			return result.stargates
+		})
+	}
+	
+	const getDestinationSystemIdOfStargateId = async (stargateId: number): Promise<number> => {
+		const url = `https://esi.evetech.net/latest/universe/stargates/${stargateId}/?datasource=tranquility`
+		const promise = getOrFetch(url, 7*24)
+		return promise.then(result => {
+			// console.log('getDestinationSystemIdOfStargateId', {result})
+			return result.destination.system_id
+		})
+	}
+	
+	// const getAllSystems = async () => {
+	// 	const url = `https://esi.evetech.net/latest/universe/systems/?datasource=tranquility`
+	// 	const promise = getOrFetch(url, 8)
+	// 	return promise.then(result => {
+	// 		console.log('getAllSystems', {result})
+	// 		return result//.slice(0, 1000)
+	// 	})
+	// }
+	
 	const getTypeIds = async (regionId: number) => {
 		const promises = []
 		for (let p = 1; p <= 16; p++) {
 			const url = `https://esi.evetech.net/latest/markets/${regionId}/types/?datasource=tranquility&page=${p}`
-			promises.push(getOrFetch(url, 8))
+			promises.push(getOrFetch(url, 7*24))
 		}
 		return Promise.all(promises).then(results => {
 			return results.flat()//.slice(0, 1000)
@@ -236,6 +292,96 @@ const util = (() => {
 		return typeIdByName
 	}
 	
+	const nodeBySystemId: {
+		[systemId: number]: Node
+	} = {}
+	const getNodeBySystemIdMap = async () => {
+		// const regionIds = await getRegionIds()
+		const regionIds = [JITA_REGION_ID]
+
+		for (let regionId of regionIds) {
+			const constellationIds = await getConstellationIdsInRegion(regionId)
+			for (let constellationId of constellationIds) {
+				const constellationSystemIds = await getSystemIdsInConstellation(constellationId)
+				for (let constellationSystemId of constellationSystemIds) {
+					nodeBySystemId[constellationSystemId] = new Node()
+					// console.log(`created node: ${constellationSystemId}`)
+				}
+			}
+		}
+
+		for (let systemId in nodeBySystemId) {
+			const node = nodeBySystemId[systemId]
+			// console.log(`visit node: ${systemId}`)
+
+			const stargateIds = await getStargateIdsInSystem(+systemId)
+			for (let stargateId of stargateIds) {
+				const destSystemId = await getDestinationSystemIdOfStargateId(stargateId)
+				// console.log(`ensured edge: ${systemId} <-> ${destSystemId}`)
+
+				const destNode = nodeBySystemId[destSystemId]
+				if (destNode) {
+					node.ensureEdgeTo(destNode)
+				} else console.warn('destNode is falsy')
+			}
+
+			// console.log(`break2`)
+			// break // TODO: delete this line
+		}	
+
+		console.log({
+			nodeBySystemId
+		})
+		
+		// const allTypeIds = await getTypeIds(JITA_REGION_ID) // TODO: search other regions too
+		
+		// const chunkSize = 1000
+		// for (let i = 0; i*chunkSize < allTypeIds.length; i++) {
+		// 	const typeIdByNameChunk: {
+		// 		[id: string]: number
+		// 	} = {}
+		// 	const typeIdsInChunk = allTypeIds.slice(i*chunkSize, (i+1)*chunkSize)
+			
+		// 	const firstTypeIdInChunk = typeIdsInChunk[0]
+		// 	const lastTypeIdInChunk = typeIdsInChunk.slice(-1)[0]
+		// 	const chunkKey = `typeIdByName_${i}_${firstTypeIdInChunk}_to_${lastTypeIdInChunk}`
+		// 	try {
+		// 		const loadedTypeIdByNameChunk = await loadJson(chunkKey)
+		// 		if (loadedTypeIdByNameChunk) {
+		// 			// console.log(`loadedTypeIdByNameChunk (${chunkKey})`, loadedTypeIdByNameChunk)
+		// 			Object.assign(
+		// 				typeIdByName,
+		// 				loadedTypeIdByNameChunk
+		// 			)
+		// 		}
+		// 	} catch (reason) {
+		// 		console.warn('getTypeIdByNameMap() caught reason: ', reason)
+
+		// 		const promises = []
+		// 		for (let typeId of typeIdsInChunk) {
+		// 			promises.push(getTypeName(typeId).then(name => {
+		// 				typeIdByNameChunk[name] = typeId
+		// 			}))
+		// 		}
+		// 		await Promise.all(promises)
+		// 		Object.assign(
+		// 			typeIdByName,
+		// 			typeIdByNameChunk
+		// 		)
+		// 		saveJson(chunkKey, typeIdByNameChunk)
+		// 		console.log(`i: ${i}, promises: ${promises.length}`)
+		// 	}
+		// 	// console.log(`i: ${i} done`)
+		// }
+
+		// console.log({
+		// 	allTypeIds_length: allTypeIds.length,
+		// 	typeIdByName_length: Object.keys(typeIdByName).length
+		// })
+
+		return nodeBySystemId
+	}
+	
 	return {
 		getTypeIds,
 		getDays,
@@ -246,6 +392,7 @@ const util = (() => {
 		getTypeName,
 		getTypeM3,
 		getTypeIdByNameMap,
+		getNodeBySystemIdMap,
 
 		constants: {
 			JITA_REGION_ID: 10000002, //The Forge
