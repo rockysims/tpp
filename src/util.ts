@@ -307,6 +307,8 @@ const util = (() => {
 					nodeBySystemId[constellationSystemId] = new Node()
 					// console.log(`created node: ${constellationSystemId}`)
 				}
+
+				// if (constellationId !== 20000017) break // TODO: delete this line
 			}
 		}
 

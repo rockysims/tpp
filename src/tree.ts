@@ -53,13 +53,33 @@ class MySet<T> extends Set<T> {
 }
 
 export class Vector extends Array {
+	static sum(vectors: Vector[]): Vector {
+		if (vectors.length <= 0) {
+			throw new Error('Failed to addAll() 0 vectors.')
+		}
+
+		return vectors.reduce((acc, cur) => {
+			return acc.add(cur)
+		})
+	}
+
 	constructor(...values: number[]) {
-		super(values.length)
+		super()
 		this.push(...values)
 	}
 
-	add(other: Vector) {
-		return this.map((val, i) => val + other[i])
+	add(other: Vector): Vector {
+		return new Vector(
+			...this.map((val, i) => val + other[i])
+		)
+	}
+
+	getDistance2D() {
+		if (this.length !== 2) {
+			throw new Error('Failed to getDistance2D() because this is not 2d. this.length: ' + this.length)
+		}
+
+		return Math.sqrt(this[0]**2 + this[1]**2)
 	}
 }
 

@@ -25,13 +25,17 @@ const Home: FC<HomeProps> = () => {
 			const basePriceByItem: {
 				[item: string]: number
 			} = {
-				copper: 2**3,
-				silver: 2**4,
-				gold: 2**5,
-				diamond: 2**6,
+				// copper: 2**3,
+				// silver: 2**4,
+				// gold: 2**5,
+				// diamond: 2**6,
+				copper: 10,
+				silver: 10,
+				gold: 10,
+				diamond: 10,
 			}
 			for (let node of nodes) {
-				for (let i = 0; i < 2; i++) {
+				for (let i = 0; i < 3; i++) {
 					const randomItem = getRandom(Object.keys(basePriceByItem))
 					const basePrice = basePriceByItem[randomItem]
 					const randomizedPriceFactor = 1 + 0.25 * Math.random()
