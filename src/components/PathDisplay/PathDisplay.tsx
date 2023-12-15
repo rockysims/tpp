@@ -1,6 +1,8 @@
 import { FC, useEffect, useState } from 'react'
 import './PathDisplay.css'
-import { Node, Path, Vector } from '../../tree'
+import { CostByNodeId, Node, Path, Vector, getDistance2D, getTravelCostByDestNodeIdMap, sumVectors } from '../../tree'
+
+// TODO: delete unused code
 
 // utils
 
@@ -73,16 +75,6 @@ function getCostOfGoingToMostExpensiveDestination(root: Node): number {
 	return getCostOfGoingToMostExpensiveDestinationRecurs(root)
 }
 
-
-
-
-
-
-
-
-
-
-
 type Point = {
 	x: number,
 	y: number,
@@ -101,14 +93,46 @@ interface PathDisplayProps {
 	path: Path
 }
 
+interface CostByNodeIdByNodeId {
+	[id: number]: CostByNodeId
+}
+
 const RADIUS = 275
 const PathDisplay: FC<PathDisplayProps> = props => {
 	const { nodes, path } = props
 
 	const [pointByNodeId, setPointByNodeId] = useState({} as PointByNodeId)
 	const [ringNumByNodeId, setRingNumByNodeId] = useState({} as RingNumByNodeId)
+	const [maxTravelCost, setMaxTravelCost] = useState(0)
+	const [
+		travelCostByDestNodeIdByOriginNodeId,
+		setTravelCostByDestNodeIdByOriginNodeId
+	] = useState(null as CostByNodeIdByNodeId|null)
+
 
 	useEffect(() => {
+		if (nodes.length === 0) return
+
+		const newTravelCostByDestNodeIdByOriginNodeId: CostByNodeIdByNodeId = {}
+		for (const node of nodes) {
+			const travelCostByDestNodeId: {
+				[id: number]: number,
+			} = getTravelCostByDestNodeIdMap(node)
+			newTravelCostByDestNodeIdByOriginNodeId[node.id] = travelCostByDestNodeId
+		}
+		setTravelCostByDestNodeIdByOriginNodeId(newTravelCostByDestNodeIdByOriginNodeId)
+
+		let newMaxTravelCost = 0
+		for (const node of nodes) {
+			for (const otherNode of nodes) {
+				const travelCost = newTravelCostByDestNodeIdByOriginNodeId[node.id][otherNode.id]
+				if (travelCost > newMaxTravelCost) {
+					newMaxTravelCost = travelCost
+				}
+			}
+		}
+		setMaxTravelCost(newMaxTravelCost)
+
 		const maxTravelCostByNodeId: {
 			[id: number]: number,
 		} = {}
@@ -123,11 +147,19 @@ const PathDisplay: FC<PathDisplayProps> = props => {
 			const ringNum = maxTravelCostByNodeId[node.id] - minTravelCost
 			newRingNumByNodeId[node.id] = ringNum
 		}
+		// const maxRingNum = Math.max(...Object.values(newRingNumByNodeId))
+		// for (const node of nodes) {
+		// 	const ringNum = newRingNumByNodeId[node.id]
+		// 	const reverseRingNum = maxRingNum - ringNum
+		// 	newRingNumByNodeId[node.id] = reverseRingNum
+		// }
 
 		setRingNumByNodeId(newRingNumByNodeId)
-	}, [nodes.length])
+	}, [nodes])
 
 	useEffect(() => {
+		if (nodes.length === 0) return
+
 		const canvas = select('#canvas') as HTMLCanvasElement
 		const ctx = canvas.getContext("2d") as CanvasRenderingContext2D
 
@@ -185,12 +217,13 @@ const PathDisplay: FC<PathDisplayProps> = props => {
 			const vectorByNodeId: {
 				[nodeId: number]: Vector
 			} = {}
-			const maxItr = 200
+			const maxItr = 150
 			const speed = 1000/maxItr
 			for (let itr = 0; itr < maxItr; itr++) {
-				const forceRatio = itr < maxItr * 0.66
-					? 1 - Math.abs(Math.cos(Math.PI * (3*itr / maxItr)))
-					: 0.2
+				const repellForceFrac = 1
+				const ringForceFrac = 0.1 + 1 - (itr/maxItr)
+				const pullForceFrac = 0.1 + 1 - Math.abs(Math.cos(Math.PI * (3*itr / maxItr)))
+				const pushForceFrac = 0.1 + 1 - pullForceFrac
 				let maxDistance = 0
 
 				const edgeDistances = nodes
@@ -209,10 +242,32 @@ const PathDisplay: FC<PathDisplayProps> = props => {
 				for (const node of nodes) {
 					const nodePoint = curPointByNodeId[node.id]
 
-					const vectors: Vector[] = []
+					const vectors: Vector[] = [
+						[0, 0]
+					]
+
+					// repell nodes apart relative to travel cost
+					for (const otherNode of nodes) {
+						if (otherNode.id === node.id) continue
+						if (travelCostByDestNodeIdByOriginNodeId === null) continue
+
+						const travelCost = travelCostByDestNodeIdByOriginNodeId[node.id][otherNode.id] || Number.POSITIVE_INFINITY
+						const oPoint = curPointByNodeId[otherNode.id]
+
+						const xDist = nodePoint.x - oPoint.x
+						const yDist = nodePoint.y - oPoint.y
+						const rawVector = [xDist, yDist]
+						const frac = 0.3 * (travelCost / maxTravelCost) * repellForceFrac
+						const vector = [
+							rawVector[0]*frac*speed,
+							rawVector[1]*frac*speed
+						]
+
+						vectors.push(vector)
+					}
 
 					// this node is pulled toward closest point on node's ring
-					const ringNum = ringNumByNodeId[node.id]
+					const ringNum = ringNumByNodeId[node.id] || 0
 					const maxRingNum = Math.max(...Object.values(ringNumByNodeId))
 					const ringRadius = RADIUS * (ringNum / maxRingNum)
 					const ringPoint = calculatePointAtSameAngle(center, nodePoint, ringRadius)
@@ -223,16 +278,18 @@ const PathDisplay: FC<PathDisplayProps> = props => {
 						const xDist = aPoint.x - bPoint.x
 						const yDist = aPoint.y - bPoint.y
 
-						const rawVector = new Vector(-1*xDist, -1*yDist)
-						const dist = rawVector.getDistance2D()
-						// const frac = Math.max(0, Math.min(100, (dist**1.5 / longestEdge) * (1.1 - (itr / maxItr))))
-						const frac = (dist**1.5 / longestEdge) * (1.1 - (itr / maxItr))
-						const vector = new Vector(
+						const rawVector: Vector = [
+							-1*xDist,
+							-1*yDist
+						]
+						const dist = getDistance2D(rawVector)
+						const frac = (dist**1.5 / longestEdge) * ringForceFrac
+						const vector: Vector = [
 							rawVector[0]*frac*speed,
 							rawVector[1]*frac*speed
-						)
+						]
 
-						vectors.push(vector)
+						// vectors.push(vector)
 					}
 
 					// other nodes push this node away
@@ -243,14 +300,13 @@ const PathDisplay: FC<PathDisplayProps> = props => {
 
 						const xDist = nodePoint.x - oPoint.x
 						const yDist = nodePoint.y - oPoint.y
-
-						const rawVector = new Vector(xDist, yDist)
-						const dist = rawVector.getDistance2D()
-						const frac = 0.05 * (longestEdge / dist)**2 * Math.max(0, forceRatio - 0.2)
-						const vector = new Vector(
+						const rawVector = [xDist, yDist]
+						const dist = getDistance2D(rawVector)
+						const frac = 0.5 * (longestEdge / dist)**1.2 * pushForceFrac
+						const vector = [
 							rawVector[0]*frac*speed,
 							rawVector[1]*frac*speed
-						)
+						]
 
 						vectors.push(vector)
 					}
@@ -263,26 +319,35 @@ const PathDisplay: FC<PathDisplayProps> = props => {
 						const xDist = aPoint.x - bPoint.x
 						const yDist = aPoint.y - bPoint.y
 
-						const rawVector = new Vector(-1*xDist, -1*yDist)
-						const dist = rawVector.getDistance2D()
-						// const frac = (dist**1.3 / longestEdge) * (1.1 - forceRatio)
-						const frac = (itr/maxItr) + Math.max(0, Math.min(10, (dist**1.5 / longestEdge) * (1.1 - forceRatio)))
-						const vector = new Vector(
+						const rawVector = [-1*xDist, -1*yDist]
+						const dist = getDistance2D(rawVector)
+						const frac = Math.max(0, Math.min(1, (dist**1.2 / longestEdge) * pullForceFrac))
+						const vector = [
 							rawVector[0]*frac*speed,
 							rawVector[1]*frac*speed
-						)
+						]
 
 						// vectors.push(vector)
 					}
 
-					const sumVector = Vector.sum(vectors)
-					const vector = new Vector(
-						sumVector[0] / vectors.length,
-						sumVector[1] / vectors.length
-					)
+					// TODO: delete this paragraph (for efficiency)
+					const vectorsHasNaN = vectors.some(v => {
+						isNaN(v[0]) || isNaN(v[1])
+					})
+					if (vectorsHasNaN) {
+						throw 'vectorsHasNaN'
+					}
+					
+					const sumVector = sumVectors(vectors)
+					const vector = sumVector
+						? [
+							sumVector[0] / vectors.length,
+							sumVector[1] / vectors.length
+						]
+						: [0, 0]
 					vectorByNodeId[node.id] = vector
 
-					const vectorDist = vector.getDistance2D()
+					const vectorDist = getDistance2D(vector)
 					if (vectorDist > maxDistance) {
 						maxDistance = vectorDist
 					}
@@ -360,14 +425,17 @@ const PathDisplay: FC<PathDisplayProps> = props => {
 					ctx.clearRect(0, 0, canvas.width, canvas.height)
 					draw(curPointByNodeId)
 					await delayMs(1)
+					console.log('draw frame')
 				}
 
 
 
-				// break; // TODO: don't break unless maxDistance is low enough
 			}
 
+			ctx.clearRect(0, 0, canvas.width, canvas.height)
 			draw(curPointByNodeId)
+			console.log('drawing done', curPointByNodeId)
+
 			setPointByNodeId(curPointByNodeId)
 		})()
 
@@ -434,7 +502,7 @@ const PathDisplay: FC<PathDisplayProps> = props => {
 				}
 			}
 		}
-	}, [nodes.length])
+	}, [travelCostByDestNodeIdByOriginNodeId])
 
 	useEffect(() => {
 		if (!Object.keys(pointByNodeId).length) return
